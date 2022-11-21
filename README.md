@@ -18,7 +18,9 @@ I_i &= -I_i / \tau_{\text{syn}} + \sum_j w_{ij} S_j(t).
 $$
 
 Furthermore the neurons are equipped with a reset:
+
 $$ V \ge \theta: V_{\text{rest}} \leftarrow V.$$
+
 (We work with $\theta = 1$ and $V_{\text{rest}} = 0$.)
 
 In order for the gradients to flow,
