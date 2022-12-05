@@ -1,4 +1,4 @@
-using DifferentialEquations, ModelingToolkit, ChainRules, ChainRulesCore, Plots
+using OrdinaryDiffEq, ModelingToolkit, ChainRules, ChainRulesCore, Plots
 
 function new_gradient(x)
     #println("My gradient.")
@@ -36,6 +36,8 @@ end
 
 #@register_symbolic δ_approx_2(x, c)
 
+testfloor(x) = (x > 0) * floor(x)
+
 function my_floor(x)
     (x > 0) * floor(x)
 end
@@ -56,11 +58,11 @@ function node_sys(;name)
     params = @parameters τ_V = 1/5. θ = 0.99
     eqs = [
         D(Ṽ) ~ (-V + I) / τ_V, #- δ_approx_1(V, θ),
-        S ~ ϕ(V - θ),
-        V ~ Ṽ - my_floor(Ṽ)
+        S ~ H(V - θ),
+        V ~ Ṽ - floor(Ṽ)
     ]
 
-    events = [Ṽ - my_floor(Ṽ) ~ θ]
+    events = [Ṽ - floor(Ṽ) ~ θ]
     affect = [V ~ 0.]
 
     return ODESystem(eqs, t, states, params; name=name)#, continuous_events = events)
@@ -156,15 +158,21 @@ function test_loss(param_subset)
     _sol = remake_solution(param_subset)
     sum(_sol[output_idxs, :])
 end
+function test_loss2(param_subset)
+    _sol = remake_solution(param_subset)
+    maximum(_sol[output_idxs, :])
+end
+
 p_subset = p[p_subset_indices]
 lossval = test_loss(p_subset)#p_subset)
 dp1 = Zygote.gradient(test_loss, p_subset)
+dp2 = Zygote.gradient(test_loss2, p_subset)
 
 training_result = let
     new_w = copy(p_subset)
-    λ = 5.
+    λ = 100.
     for i in 1:20
-        new_w = new_w - λ * Zygote.gradient(test_loss, new_w)[1]
+        new_w = new_w - λ * Zygote.gradient(test_loss2, new_w)[1]
         @info "Loss: $(test_loss(new_w))"
         @info " w: $(new_w)"
     end
