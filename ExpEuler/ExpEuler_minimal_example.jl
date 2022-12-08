@@ -1,4 +1,5 @@
-using Plots, Distributions, Zygote, OMEinsum
+using Plots, Distributions, Zygote, OMEinsum, Optimization
+using Flux: logitcrossentropy, onehotbatch
 
 input_number = 100;
 hidden_number = 4;
@@ -144,3 +145,25 @@ end
 
 hidden_layer_plots = plot_voltages(membrane_record; spikes = spike_record, dim = (2,2))
 output_layer_plots = plot_voltages(output_record)
+
+function classification_accuracy(X, Y, W1, W2)
+    output = simulation(X, W1, W2)[3]
+    time_max = maximum(output, dims = 2) # Maximum over time
+	unit_max = getindex.(Tuple.(argmax(time_max, dims = 3)), 3) # Maximum of output units
+	accuracy = mean(unit_max .== Y)
+    return accuracy
+end
+
+function SNN_loss(weights)
+    W1, W2 = weights
+	output = simulation(X_data, W1, W2)[3]
+	# Maximum over time
+	time_max = maximum(output, dims = 2)
+	# Maximum of output units
+    y = onehotbatch(Y_data, 1:2)
+	ŷ = reshape(time_max, (output_number, batch_size))
+	return logitcrossentropy(ŷ, y)
+end
+
+adtype = Optimization.AutoZygte()
+optf = Optimization.OptimizationFunction((x,p) -> SNN_loss(x), adtype)
