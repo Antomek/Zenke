@@ -1,5 +1,5 @@
-using Plots, Distributions, Zygote, OMEinsum, Optimization
-using Flux: logitcrossentropy, onehotbatch
+using Plots, Distributions, Zygote, OMEinsum, Optimization, OptimizationOptimisers, ChainRules, ChainRulesCore
+using Flux: logitcrossentropy, logitbinarycrossentropy, onehotbatch
 
 input_number = 100;
 hidden_number = 4;
@@ -64,15 +64,36 @@ input_plot = let
 	plot(p..., layout = dim, grid = false, legend = false, size=(1000, 600))
 end
 
-function spike_fun(x)
-    res = Zygote.Buffer(x, size(x)...)
-    for i in eachindex(x)
-        x[i] > 0. ? res[i] = 1. : res[i] = 0.
-    end
-    return copy(res)
+Θ(x) = x > 0f0 ? 1f0 : 0f0
+
+Θ_spike(x) =  x > 0f0 ? 1f0 : 0f0
+
+function dSuperSpike(x)
+    return conj((abs(x / 2) + 1)^(-2))
 end
 
-function simulation(X, W1, W2)
+function test_dSuperSpike(x)
+    scale = 100f0
+    return conj((scale * abs(x) + 1f0)^(-2))
+end
+
+Numeric = Union{AbstractArray{<:T}, T} where {T<:Number}
+function ChainRulesCore.rrule(::typeof(Broadcast.broadcasted),
+                         ::typeof(Θ_spike), x::Numeric)
+
+    Ω = Θ_spike.(x)
+
+    function broadcasted_Θ_pullback(dΩ)
+        x_thunk = InplaceableThunk(
+           dx -> @.(dx += dΩ * test_dSuperSpike(x)),
+           @thunk @.(dΩ * test_dSuperSpike(x))
+           )
+        NoTangent(), NoTangent(), x_thunk
+    end
+    return Ω, broadcasted_Θ_pullback
+end
+
+function simulation(X, W1, W2; surrogate = true)
     synapse_state = zeros((batch_size, hidden_number))
     membrane_state = zeros((batch_size, hidden_number))
 
@@ -82,10 +103,12 @@ function simulation(X, W1, W2)
 
     h1 = layer_inputs(X, W1)
 
+    spike_fun = (surrogate ? Θ_spike : Θ)
+
     # Here we loop over time
     for t in 1:step_number
         membrane_threshold = membrane_state .- 1.0
-        out = spike_fun(membrane_threshold)
+        out = spike_fun.(membrane_threshold)
         reset = out #.detach() # We do not want to backprop through the reset
 
         new_synapse_state = @. β_syn * synapse_state + h1[:, t, :]
@@ -146,24 +169,59 @@ end
 hidden_layer_plots = plot_voltages(membrane_record; spikes = spike_record, dim = (2,2))
 output_layer_plots = plot_voltages(output_record)
 
-function classification_accuracy(X, Y, W1, W2)
-    output = simulation(X, W1, W2)[3]
+function classification_accuracy(X, Y, weights; surrogate = true)
+    W1 = weights[1:100, :]
+    W2 = transpose(weights[101:end, :])
+
+    output = simulation(X, W1, W2; surrogate = surrogate)[3]
     time_max = maximum(output, dims = 2) # Maximum over time
-	unit_max = getindex.(Tuple.(argmax(time_max, dims = 3)), 3) # Maximum of output units
+    y_network = dropdims(time_max; dims = 2)
+    unit_max = getindex.(Tuple.(argmax(y_network; dims = 2)), 2)
 	accuracy = mean(unit_max .== Y)
     return accuracy
 end
 
-function SNN_loss(weights)
-    W1, W2 = weights
-	output = simulation(X_data, W1, W2)[3]
-	# Maximum over time
+function SNN_loss(weights; surrogate = true)
+    W1 = weights[1:100, :]
+    W2 = transpose(weights[101:end, :])
+
+	output = simulation(X_data, W1, W2; surrogate = surrogate)[3]
 	time_max = maximum(output, dims = 2)
-	# Maximum of output units
-    y = onehotbatch(Y_data, 1:2)
-	ŷ = reshape(time_max, (output_number, batch_size))
-	return logitcrossentropy(ŷ, y)
+    y_network = transpose(dropdims(time_max; dims = 2))
+    y_label = onehotbatch(Y_data, 1:2)
+	return logitcrossentropy(y_network, y_label)
 end
 
-adtype = Optimization.AutoZygte()
-optf = Optimization.OptimizationFunction((x,p) -> SNN_loss(x), adtype)
+surrogate_loss_record = Float32[]
+surrogate_weights = Matrix{Float32}[]
+no_surrogate_loss_record = Float32[]
+no_surrogate_weights = Matrix{Float32}[]
+
+callback_maker = function(;surrogate = true)
+    return callback = function (p, l)
+    display(l)
+    surrogate ? push!(surrogate_loss_record, l) : push!(no_surrogate_loss_record, l)
+    surrogate ? push!(surrogate_weights, p) : push!(no_surrogate_weights, p)
+    # Tell Optimization.solve to not halt the optimization. If return true, then
+    # optimization stops.
+    return false
+    end
+end
+
+adtype = Optimization.AutoZygote()
+surrogate_optf = Optimization.OptimizationFunction((x,p) -> SNN_loss(x; surrogate = true), adtype)
+surrogate_optprob = Optimization.OptimizationProblem(surrogate_optf, vcat(W1_init, transpose(W2_init)))
+
+no_surrogate_optf = Optimization.OptimizationFunction((x,p) -> SNN_loss(x; surrogate = false), adtype)
+no_surrogate_optprob = Optimization.OptimizationProblem(no_surrogate_optf, vcat(W1_init, transpose(W2_init)))
+
+epochs = 1000
+
+surrogate_result = Optimization.solve(surrogate_optprob, Optimisers.Adam(2f-3, (9f-1, 9.99f-1)), callback  = callback_maker(surrogate = true), maxiters = epochs)
+no_surrogate_result = Optimization.solve(no_surrogate_optprob, Optimisers.Adam(2f-3, (9f-1, 9.99f-1)), callback  = callback_maker(surrogate = false), maxiters = epochs)
+
+loss_plot = plot(1:(epochs+1), surrogate_loss_record, xlabel = "Epochs", ylabel = "Crossentropy loss"; color = :orange, lw=3, label = "Surrogate", ylims = (0., 0.9))
+plot!(loss_plot, 1:(epochs+1), no_surrogate_loss_record, xlabel = "Epochs", ylabel = "Crossentropy loss"; color = :blue, lw=3, label = "No surrogate")
+
+@info "Surrogate accuracy: " classification_accuracy(X_data, Y_data, surrogate_weights[end])
+@info "No surrogate accuracy: " classification_accuracy(X_data, Y_data, no_surrogate_weights[end]; surrogate = false)
