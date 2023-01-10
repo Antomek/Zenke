@@ -68,12 +68,7 @@ end
 
 Θ_spike(x) =  x > 0f0 ? 1f0 : 0f0
 
-function dSuperSpike(x)
-    return conj((abs(x / 2) + 1)^(-2))
-end
-
-function test_dSuperSpike(x)
-    scale = 100f0
+function dSuperSpike(x; scale = 100f0)
     return conj((scale * abs(x) + 1f0)^(-2))
 end
 
@@ -85,8 +80,8 @@ function ChainRulesCore.rrule(::typeof(Broadcast.broadcasted),
 
     function broadcasted_Θ_pullback(dΩ)
         x_thunk = InplaceableThunk(
-           dx -> @.(dx += dΩ * test_dSuperSpike(x)),
-           @thunk @.(dΩ * test_dSuperSpike(x))
+           dx -> @.(dx += dΩ * dSuperSpike(x)),
+           @thunk @.(dΩ * dSuperSpike(x))
            )
         NoTangent(), NoTangent(), x_thunk
     end
@@ -109,7 +104,6 @@ function simulation(X, W1, W2; surrogate = true)
     for t in 1:step_number
         membrane_threshold = membrane_state .- 1.0
         out = spike_fun.(membrane_threshold)
-        reset = out #.detach() # We do not want to backprop through the reset
 
         new_synapse_state = @. β_syn * synapse_state + h1[:, t, :]
         new_membrane_state = @. (β_mem * membrane_state + synapse_state) * (1.0 - out)
@@ -220,7 +214,7 @@ epochs = 1000
 surrogate_result = Optimization.solve(surrogate_optprob, Optimisers.Adam(2f-3, (9f-1, 9.99f-1)), callback  = callback_maker(surrogate = true), maxiters = epochs)
 no_surrogate_result = Optimization.solve(no_surrogate_optprob, Optimisers.Adam(2f-3, (9f-1, 9.99f-1)), callback  = callback_maker(surrogate = false), maxiters = epochs)
 
-loss_plot = plot(1:(epochs+1), surrogate_loss_record, xlabel = "Epochs", ylabel = "Crossentropy loss"; color = :orange, lw=3, label = "Surrogate", ylims = (0., 0.9))
+loss_plot = plot(1:(epochs+1), surrogate_loss_record, xlabel = "Epochs", ylabel = "Crossentropy loss"; color = :orange, lw=3, label = "Surrogate", ylims = (0., 0.9), yticks = 0:0.1:0.9)
 plot!(loss_plot, 1:(epochs+1), no_surrogate_loss_record, xlabel = "Epochs", ylabel = "Crossentropy loss"; color = :blue, lw=3, label = "No surrogate")
 
 @info "Surrogate accuracy: " classification_accuracy(X_data, Y_data, surrogate_weights[end])
