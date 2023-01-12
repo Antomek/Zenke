@@ -6,7 +6,7 @@ step_number = Int(t_end ÷ Δt);
 
 
 begin
-    switch = 4
+    switch = 1
 
     C = 1 # ms
     τ_s = 10
@@ -16,7 +16,8 @@ begin
     V_u0 = [-50, -50, -50, -54.5, -54.5][switch]
     g_f = 1
     g_s = 0.5
-    g_u = 0.015
+    #g_u = 0.015
+    g_u = 0.0
     V_r = -40
     V_sr = -35
     ΔV_u = 3
@@ -56,7 +57,7 @@ function MQIF_simulation(;I = 5.)
 
         new_V_state = V_step(V_state, V_s_state, V_u_state, I) + out * (-V_step(V_state, V_s_state, V_u_state, I) + V_r)
         new_V_s_state = V_s_step(V_s_state, V_state) + out * (-V_s_step(V_s_state, V_state) + V_sr)
-        new_V_u_state = V_u_step(V_u_state, V_state) + out * (-V_s_step(V_u_state, V_state) + V_u_state + ΔV_u)
+        new_V_u_state = V_u_step(V_u_state, V_state) + out * (-V_u_step(V_u_state, V_state) + V_u_state + ΔV_u)
 
         V_list[t] = V_state
         V_s_list[t] = V_s_state
