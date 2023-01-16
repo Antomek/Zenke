@@ -42,7 +42,7 @@ input_spikeplot = let
 	ylabel!("Unit")
 end
 
-W1_init, W2_init = let
+LIF_W1_init, LIF_W2_init = let
     weight_scale = Float32(7 * (1 - β_mem))
 	
     W1 = rand(Normal(0, weight_scale / Float32(sqrt(input_number))), (input_number, hidden_number))
@@ -55,13 +55,13 @@ function layer_inputs(input, W)
 end
 
 input_plot = let
-	dim = (1, 1)
+	dims = (1, 1)
 	p = []
 	colors = palette(:Dark2_5)
-	for i in 1:prod(dim)
-        push!(p, plot(sum(layer_inputs(X_data, W1_init), dims = 2), palette = :Dark2_5, fmt=:svg, linewidth = 2))
+	for i in 1:prod(dims)
+        push!(p, plot(layer_inputs(X_data, LIF_W1_init)[:, i, :], palette = :Dark2_5, fmt=:svg, linewidth = 2))
 	end
-	plot(p..., layout = dim, grid = false, legend = false, size=(1000, 600))
+	plot(p..., layout = dims, grid = false, legend = false, size=(1000, 600))
 end
 
 Θ(x) = x > 0f0 ? 1f0 : 0f0
@@ -88,7 +88,7 @@ function ChainRulesCore.rrule(::typeof(Broadcast.broadcasted),
     return Ω, broadcasted_Θ_pullback
 end
 
-function simulation(X, W1, W2; surrogate = true)
+function LIF_Zenke_simulation(X, W1, W2; surrogate = true)
     synapse_state = zeros((batch_size, hidden_number))
     membrane_state = zeros((batch_size, hidden_number))
 
@@ -108,14 +108,11 @@ function simulation(X, W1, W2; surrogate = true)
         membrane_buff[:, t, :] = membrane_state
         spike_buff[:, t, :] = out
 
-        if iseven(t)
-            new_synapse_state = @. β_syn * synapse_state + h1[:, t, :]
-            synapse_state = new_synapse_state
-        elseif isodd(t)
-            new_membrane_state = @. (β_mem * membrane_state + synapse_state) * (1.0 - out)
-            membrane_state = new_membrane_state
-        end
-        
+        new_synapse_state = @. β_syn * synapse_state + h1[:, t, :]
+        new_membrane_state = @. (β_mem * membrane_state + synapse_state) * (1.0 - out)
+
+        synapse_state = new_synapse_state
+        membrane_state = new_membrane_state
     end
 
     membrane_rec = copy(membrane_buff)
@@ -147,7 +144,7 @@ function simulation(X, W1, W2; surrogate = true)
     return membrane_rec, spike_rec, network_outputs
 end
 
-membrane_record, spike_record, output_record = simulation(X_data, W1_init, W2_init);
+membrane_record, spike_record, output_record = LIF_Zenke_simulation(X_data, LIF_W1_init, LIF_W2_init);
 
 function plot_voltages(membrane_record; spikes = nothing, spike_height = 2., dim = (2, 2))
 	data = copy(membrane_record)
@@ -166,39 +163,39 @@ end
 hidden_layer_plots = plot_voltages(membrane_record; spikes = spike_record, dim = (2,2))
 output_layer_plots = plot_voltages(output_record)
 
-#function classification_accuracy(X, Y, weights; surrogate = true)
-#    W1 = weights[1:100, :]
-#    W2 = transpose(weights[101:end, :])
-#
-#    output = simulation(X, W1, W2; surrogate = surrogate)[3]
-#    time_max = maximum(output, dims = 2) # Maximum over time
-#    y_network = dropdims(time_max; dims = 2)
-#    unit_max = getindex.(Tuple.(argmax(y_network; dims = 2)), 2)
-#	accuracy = mean(unit_max .== Y)
-#    return accuracy
-#end
-#
-#function SNN_loss(weights; surrogate = true)
-#    W1 = weights[1:100, :]
-#    W2 = transpose(weights[101:end, :])
-#
-#	output = simulation(X_data, W1, W2; surrogate = surrogate)[3]
-#	time_max = maximum(output, dims = 2)
-#    y_network = transpose(dropdims(time_max; dims = 2))
-#    y_label = onehotbatch(Y_data, 1:2)
-#	return logitcrossentropy(y_network, y_label)
-#end
-#
-#surrogate_loss_record = Float32[]
-#surrogate_weights = Matrix{Float32}[]
-#no_surrogate_loss_record = Float32[]
-#no_surrogate_weights = Matrix{Float32}[]
+function LIF_classification_accuracy(X, Y, weights; surrogate = true)
+    W1 = weights[1:100, :]
+    W2 = transpose(weights[101:end, :])
+
+    output = LIF_Zenke_simulation(X, W1, W2; surrogate = surrogate)[3]
+    time_max = maximum(output, dims = 2) # Maximum over time
+    y_network = dropdims(time_max; dims = 2)
+    unit_max = getindex.(Tuple.(argmax(y_network; dims = 2)), 2)
+	accuracy = mean(unit_max .== Y)
+    return accuracy
+end
+
+function LIF_SNN_loss(weights; surrogate = true)
+    W1 = weights[1:100, :]
+    W2 = transpose(weights[101:end, :])
+
+	output = LIF_Zenke_simulation(X_data, W1, W2; surrogate = surrogate)[3]
+	time_max = maximum(output, dims = 2)
+    y_network = transpose(dropdims(time_max; dims = 2))
+    y_label = onehotbatch(Y_data, 1:2)
+	return logitcrossentropy(y_network, y_label)
+end
+
+#LIF_surrogate_loss_record = Float32[]
+#LIF_surrogate_weights = Matrix{Float32}[]
+#LIF_no_surrogate_loss_record = Float32[]
+#LIF_no_surrogate_weights = Matrix{Float32}[]
 #
 #callback_maker = function(;surrogate = true)
 #    return callback = function (p, l)
 #    display(l)
-#    surrogate ? push!(surrogate_loss_record, l) : push!(no_surrogate_loss_record, l)
-#    surrogate ? push!(surrogate_weights, p) : push!(no_surrogate_weights, p)
+#    surrogate ? push!(LIF_surrogate_loss_record, l) : push!(LIF_no_surrogate_loss_record, l)
+#    surrogate ? push!(LIF_surrogate_weights, p) : push!(LIF_no_surrogate_weights, p)
 #    # Tell Optimization.solve to not halt the optimization. If return true, then
 #    # optimization stops.
 #    return false
@@ -206,19 +203,19 @@ output_layer_plots = plot_voltages(output_record)
 #end
 #
 #adtype = Optimization.AutoZygote()
-#surrogate_optf = Optimization.OptimizationFunction((x,p) -> SNN_loss(x; surrogate = true), adtype)
-#surrogate_optprob = Optimization.OptimizationProblem(surrogate_optf, vcat(W1_init, transpose(W2_init)))
+#LIF_surrogate_optf = Optimization.OptimizationFunction((x,p) -> LIF_SNN_loss(x; surrogate = true), adtype)
+#LIF_surrogate_optprob = Optimization.OptimizationProblem(LIF_surrogate_optf, vcat(LIF_W1_init, transpose(LIF_W2_init)))
 #
-#no_surrogate_optf = Optimization.OptimizationFunction((x,p) -> SNN_loss(x; surrogate = false), adtype)
-#no_surrogate_optprob = Optimization.OptimizationProblem(no_surrogate_optf, vcat(W1_init, transpose(W2_init)))
+#LIF_no_surrogate_optf = Optimization.OptimizationFunction((x,p) -> LIF_SNN_loss(x; surrogate = false), adtype)
+#LIF_no_surrogate_optprob = Optimization.OptimizationProblem(LIF_no_surrogate_optf, vcat(LIF_W1_init, transpose(LIF_W2_init)))
 #
 #epochs = 1000
 #
-#surrogate_result = Optimization.solve(surrogate_optprob, Optimisers.Adam(2f-3, (9f-1, 9.99f-1)), callback  = callback_maker(surrogate = true), maxiters = epochs)
-#no_surrogate_result = Optimization.solve(no_surrogate_optprob, Optimisers.Adam(2f-3, (9f-1, 9.99f-1)), callback  = callback_maker(surrogate = false), maxiters = epochs)
+#surrogate_result = Optimization.solve(LIF_surrogate_optprob, Optimisers.Adam(2f-3, (9f-1, 9.99f-1)), callback  = callback_maker(surrogate = true), maxiters = epochs)
+#no_surrogate_result = Optimization.solve(LIF_no_surrogate_optprob, Optimisers.Adam(2f-3, (9f-1, 9.99f-1)), callback  = callback_maker(surrogate = false), maxiters = epochs)
 #
-#loss_plot = plot(1:(epochs+1), surrogate_loss_record, xlabel = "Epochs", ylabel = "Crossentropy loss"; color = :orange, lw=3, label = "Surrogate", ylims = (0., 0.9), yticks = 0:0.1:0.9)
-#plot!(loss_plot, 1:(epochs+1), no_surrogate_loss_record, xlabel = "Epochs", ylabel = "Crossentropy loss"; color = :blue, lw=3, label = "No surrogate")
+#loss_plot = plot(1:(epochs+1), LIF_surrogate_loss_record, xlabel = "Epochs", ylabel = "Crossentropy loss"; color = :orange, lw=3, label = "Surrogate", ylims = (0., 0.9), yticks = 0:0.1:0.9)
+#plot!(loss_plot, 1:(epochs+1), LIF_no_surrogate_loss_record, xlabel = "Epochs", ylabel = "Crossentropy loss"; color = :blue, lw=3, label = "No surrogate")
 #
-#@info "Surrogate accuracy: " classification_accuracy(X_data, Y_data, surrogate_weights[end])
-#@info "No surrogate accuracy: " classification_accuracy(X_data, Y_data, no_surrogate_weights[end]; surrogate = false)
+#@info "Surrogate accuracy: " LIF_classification_accuracy(X_data, Y_data, LIF_surrogate_weights[end])
+#@info "No surrogate accuracy: " LIF_classification_accuracy(X_data, Y_data, LIF_no_surrogate_weights[end]; surrogate = false)

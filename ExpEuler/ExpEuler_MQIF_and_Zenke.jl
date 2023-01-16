@@ -4,12 +4,12 @@ using Flux: logitcrossentropy, logitbinarycrossentropy, onehotbatch
 Δt = 1e-3
 #t_end = 20.
 #step_number = Int(t_end ÷ Δt)
-step_numer = 200
+step_number = 200
 
 input_number = 100;
 hidden_number = 4;
 output_number = 2;
-batch_size = 256 # batch size for training;
+batch_size = 2^6 # batch size for training;
 
 begin
     switch = 1
@@ -73,11 +73,12 @@ input_spikeplot = let
 	ylabel!("Unit")
 end
 
-W1_init, W2_init = let
-    weight_scale = Float32(7 * (1 - β_mem))
+MQIF_W1_init, MQIF_W2_init = let
+    input_weight_scale = Float32(((1 - β_V) / (2 * g_f * V_0))^(-1))
+    output_weight_scale = Float32(7 * (1 - β_mem))
 	
-    W1 = rand(Normal(0, weight_scale / Float32(sqrt(input_number))), (input_number, hidden_number))
-    W2 = rand(Normal(0, weight_scale / Float32(sqrt(hidden_number))), (hidden_number, output_number))
+    W1 = rand(Normal(0, input_weight_scale / Float32(sqrt(input_number))), (input_number, hidden_number))
+    W2 = rand(Normal(0, output_weight_scale / Float32(sqrt(hidden_number))), (hidden_number, output_number))
     (W1, W2)
 end;
 
@@ -90,7 +91,7 @@ input_plot = let
 	p = []
 	colors = palette(:Dark2_5)
 	for i in 1:prod(dim)
-        push!(p, plot(sum(layer_inputs(X_data, W1_init), dims = 2), palette = :Dark2_5, fmt=:svg, linewidth = 2))
+        push!(p, plot(layer_inputs(X_data, MQIF_W1_init)[:, i, :], palette = :Dark2_5, fmt=:svg, linewidth = 2))
 	end
 	plot(p..., layout = dim, grid = false, legend = false, size=(1000, 600))
 end
@@ -98,7 +99,7 @@ end
 Θ(x) = x > 0f0 ? 1f0 : 0f0
 Θ_spike(x) =  x > 0f0 ? 1f0 : 0f0
 
-function dSuperSpike(x; scale = 100f0)
+function dSuperSpike(x; scale = 110f0)
     return conj((scale * abs(x) + 1f0)^(-2))
 end
 
@@ -118,7 +119,7 @@ function ChainRulesCore.rrule(::typeof(Broadcast.broadcasted),
     return Ω, broadcasted_Θ_pullback
 end
 
-function simulation(X, W1, W2; surrogate = true)
+function MQIF_Zenke_simulation(X, W1, W2; surrogate = true)
     synapse_state = zeros((batch_size, hidden_number))
     V_hidden_state = fill(V_0, (batch_size, hidden_number))
     V_s_hidden_state = fill(V_s0, (batch_size, hidden_number))
@@ -136,16 +137,22 @@ function simulation(X, W1, W2; surrogate = true)
         V_threshold = V_hidden_state .- V_max
         out = spike_fun.(V_threshold)
 
-        new_hidden_synapse_state = @. β_syn * synapse_state + h1[:, t, :]
-        new_V_hidden_state = @. V_step(V_hidden_state, V_s_hidden_state, V_u0, synapse_state) + out * (-V_step(V_hidden_state, V_s_hidden_state, V_u0, synapse_state) + V_r)
-        new_V_s_hidden_state = @. V_s_step(V_s_hidden_state, V_hidden_state) + out * (-V_s_step(V_s_hidden_state, V_hidden_state) + V_sr)
+        if iseven(t)
+            #new_V_hidden_state = @. V_step(V_hidden_state, V_s_hidden_state, V_u0, synapse_state) + out * (-V_step(V_hidden_state, V_s_hidden_state, V_u0, synapse_state) + V_r)
+            new_V_hidden_state = @. V_step(V_hidden_state, V_s_hidden_state, V_u0, synapse_state) * (1 - out) + out * V_r
+            new_hidden_synapse_state = @. β_syn * synapse_state + h1[:, t, :]
+
+            V_hidden_state = new_V_hidden_state
+            synapse_state = new_hidden_synapse_state
+        elseif isodd(t)
+            new_V_s_hidden_state = @. V_s_step(V_s_hidden_state, V_hidden_state) * (1 - out) + out * V_sr
+
+            V_s_hidden_state = new_V_s_hidden_state
+        end
 
         V_buff[:, t, :] = V_hidden_state
         spike_buff[:, t, :] = out
 
-        synapse_state = new_hidden_synapse_state
-        V_hidden_state = new_V_hidden_state
-        V_s_hidden_state = new_V_s_hidden_state
     end
 
     V_rec = copy(V_buff)
@@ -177,7 +184,7 @@ function simulation(X, W1, W2; surrogate = true)
     return V_rec, spike_rec, network_outputs
 end
 
-membrane_record, spike_record, output_record = simulation(X_data, W1_init, W2_init);
+membrane_record, spike_record, output_record = MQIF_Zenke_simulation(X_data, MQIF_W1_init, MQIF_W2_init);
 
 function plot_voltages(membrane_record; spikes = nothing, spike_height = 2., dim = (2, 2))
 	data = copy(membrane_record)
@@ -194,4 +201,64 @@ function plot_voltages(membrane_record; spikes = nothing, spike_height = 2., dim
 end
 
 hidden_layer_plots = plot_voltages(membrane_record; spikes = spike_record, dim = (2,2))
-output_layer_plots = plot_voltages(output_record)
+#output_layer_plots = plot_voltages(output_record)
+
+#function MQIF_classification_accuracy(X, Y, weights; surrogate = true)
+#    W1 = weights[1:100, :]
+#    W2 = transpose(weights[101:end, :])
+#
+#    output = MQIF_Zenke_simulation(X, W1, W2; surrogate = surrogate)[3]
+#    time_max = maximum(output, dims = 2) # Maximum over time
+#    y_network = dropdims(time_max; dims = 2)
+#    unit_max = getindex.(Tuple.(argmax(y_network; dims = 2)), 2)
+#	accuracy = mean(unit_max .== Y)
+#    return accuracy
+#end
+#
+#function MQIF_SNN_loss(weights; surrogate = true)
+#    W1 = weights[1:100, :]
+#    W2 = transpose(weights[101:end, :])
+#
+#	output = MQIF_Zenke_simulation(X_data, W1, W2; surrogate = surrogate)[3]
+#	time_max = maximum(output, dims = 2)
+#    y_network = transpose(dropdims(time_max; dims = 2))
+#    y_label = onehotbatch(Y_data, 1:2)
+#	return logitcrossentropy(y_network, y_label)
+#end
+#MQIF_no_surrogate_loss(weights) = MQIF_SNN_loss(weights; surrogate = false)
+#
+#MQIF_surrogate_loss_record = Float32[]
+#MQIF_surrogate_weights = Matrix{Float32}[]
+#MQIF_no_surrogate_loss_record = Float32[]
+#MQIF_no_surrogate_weights = Matrix{Float32}[]
+#
+#callback_maker = function(;surrogate = true)
+#    return callback = function (p, l)
+#    display(l)
+#    surrogate ? push!(MQIF_surrogate_loss_record, l) : push!(MQIF_no_surrogate_loss_record, l)
+#    surrogate ? push!(MQIF_surrogate_weights, p) : push!(MQIF_no_surrogate_weights, p)
+#    # Tell Optimization.solve to not halt the optimization. If return true, then
+#    # optimization stops.
+#    return false
+#    end
+#end
+#
+#adtype = Optimization.AutoZygote()
+#MQIF_surrogate_optf = Optimization.OptimizationFunction((x,p) -> MQIF_SNN_loss(x; surrogate = true), adtype)
+#MQIF_surrogate_optprob = Optimization.OptimizationProblem(MQIF_surrogate_optf, vcat(MQIF_W1_init, transpose(MQIF_W2_init)))
+#
+#MQIF_no_surrogate_optf = Optimization.OptimizationFunction((x,p) -> MQIF_SNN_loss(x; surrogate = false), adtype)
+#MQIF_no_surrogate_optprob = Optimization.OptimizationProblem(MQIF_no_surrogate_optf, vcat(MQIF_W1_init, transpose(MQIF_W2_init)))
+#
+#epochs = 100
+#
+##surrogate_result = Optimization.solve(surrogate_optprob, Optimisers.Adam(2f-3, (9f-1, 9.99f-1)), callback  = callback_maker(surrogate = true), maxiters = epochs)
+##no_surrogate_result = Optimization.solve(no_surrogate_optprob, Optimisers.Adam(2f-3, (9f-1, 9.99f-1)), callback  = callback_maker(surrogate = false), maxiters = epochs)
+#MQIF_surrogate_result = Optimization.solve(MQIF_surrogate_optprob, Optimisers.Adam(5f-3, (9f-1, 9.99f-1)), callback  = callback_maker(surrogate = true), maxiters = epochs)
+#MQIF_no_surrogate_result = Optimization.solve(MQIF_no_surrogate_optprob, Optimisers.Adam(5f-3, (9f-1, 9.99f-1)), callback  = callback_maker(surrogate = false), maxiters = epochs)
+#
+#MQIF_loss_plot = plot(1:(epochs+1), MQIF_surrogate_loss_record, xlabel = "Epochs", ylabel = "Crossentropy loss"; color = :orange, lw=3, label = "Surrogate", ylims = (0., 0.9), yticks = 0:0.1:0.9)
+#plot!(MQIF_loss_plot, 1:(epochs+1), MQIF_no_surrogate_loss_record, xlabel = "Epochs", ylabel = "Crossentropy loss"; color = :blue, lw=3, label = "No surrogate")
+#
+#@info "Surrogate accuracy: " MQIF_classification_accuracy(X_data, Y_data, MQIF_surrogate_weights[end])
+#@info "No surrogate accuracy: " MQIF_classification_accuracy(X_data, Y_data, MQIF_no_surrogate_weights[end]; surrogate = false)

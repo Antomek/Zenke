@@ -55,17 +55,22 @@ function MQIF_simulation(;I = 5.)
         V_threshold = V_state - V_max
         out = Θ(V_threshold)
 
-        new_V_state = V_step(V_state, V_s_state, V_u_state, I) + out * (-V_step(V_state, V_s_state, V_u_state, I) + V_r)
-        new_V_s_state = V_s_step(V_s_state, V_state) + out * (-V_s_step(V_s_state, V_state) + V_sr)
-        new_V_u_state = V_u_step(V_u_state, V_state) + out * (-V_u_step(V_u_state, V_state) + V_u_state + ΔV_u)
+        if iseven(t)
+            new_V_state = V_step(V_state, V_s_state, V_u_state, I) + out * (-V_step(V_state, V_s_state, V_u_state, I) + V_r)
+
+            V_state = new_V_state
+        elseif isodd(t)
+            new_V_s_state = V_s_step(V_s_state, V_state) + out * (-V_s_step(V_s_state, V_state) + V_sr)
+            new_V_u_state = V_u_step(V_u_state, V_state) + out * (-V_u_step(V_u_state, V_state) + V_u_state + ΔV_u)
+
+            V_s_state = new_V_s_state
+            V_u_state = new_V_u_state
+        end
 
         V_list[t] = V_state
         V_s_list[t] = V_s_state
         V_u_list[t] = V_u_state
 
-        V_state = new_V_state
-        V_s_state = new_V_s_state
-        V_u_state = new_V_u_state
     end
 
     return (V_list = V_list, V_s_list = V_s_list, V_u_list = V_u_list)
