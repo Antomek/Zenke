@@ -161,31 +161,31 @@ function plot_voltages(membrane_record; spikes = nothing, spike_height = 2., dim
 end
 
 hidden_layer_plots = plot_voltages(membrane_record; spikes = spike_record, dim = (2,2))
-output_layer_plots = plot_voltages(output_record)
-
-function LIF_classification_accuracy(X, Y, weights; surrogate = true)
-    W1 = weights[1:100, :]
-    W2 = transpose(weights[101:end, :])
-
-    output = LIF_Zenke_simulation(X, W1, W2; surrogate = surrogate)[3]
-    time_max = maximum(output, dims = 2) # Maximum over time
-    y_network = dropdims(time_max; dims = 2)
-    unit_max = getindex.(Tuple.(argmax(y_network; dims = 2)), 2)
-	accuracy = mean(unit_max .== Y)
-    return accuracy
-end
-
-function LIF_SNN_loss(weights; surrogate = true)
-    W1 = weights[1:100, :]
-    W2 = transpose(weights[101:end, :])
-
-	output = LIF_Zenke_simulation(X_data, W1, W2; surrogate = surrogate)[3]
-	time_max = maximum(output, dims = 2)
-    y_network = transpose(dropdims(time_max; dims = 2))
-    y_label = onehotbatch(Y_data, 1:2)
-	return logitcrossentropy(y_network, y_label)
-end
-
+#output_layer_plots = plot_voltages(output_record)
+#
+#function LIF_classification_accuracy(X, Y, weights; surrogate = true)
+#    W1 = weights[1:100, :]
+#    W2 = transpose(weights[101:end, :])
+#
+#    output = LIF_Zenke_simulation(X, W1, W2; surrogate = surrogate)[3]
+#    time_max = maximum(output, dims = 2) # Maximum over time
+#    y_network = dropdims(time_max; dims = 2)
+#    unit_max = getindex.(Tuple.(argmax(y_network; dims = 2)), 2)
+#	accuracy = mean(unit_max .== Y)
+#    return accuracy
+#end
+#
+#function LIF_SNN_loss(weights; surrogate = true)
+#    W1 = weights[1:100, :]
+#    W2 = transpose(weights[101:end, :])
+#
+#	output = LIF_Zenke_simulation(X_data, W1, W2; surrogate = surrogate)[3]
+#	time_max = maximum(output, dims = 2)
+#    y_network = transpose(dropdims(time_max; dims = 2))
+#    y_label = onehotbatch(Y_data, 1:2)
+#	return logitcrossentropy(y_network, y_label)
+#end
+#
 #LIF_surrogate_loss_record = Float32[]
 #LIF_surrogate_weights = Matrix{Float32}[]
 #LIF_no_surrogate_loss_record = Float32[]
