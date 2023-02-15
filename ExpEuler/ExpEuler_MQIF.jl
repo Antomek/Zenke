@@ -23,7 +23,9 @@ begin
     ΔV_u = 3
     I = 5
 
-    V_max = -30.
+
+    V_rest = (V_0 + V_s0 * (g_s / g_f)) / (1 + g_s / g_f)
+    V_max = -30. - V_rest
 end
 
 β(τ) = exp( -Δt / τ)
@@ -43,7 +45,7 @@ V_u_step(V_uₙ, Vₙ) = Vₙ + (V_uₙ - Vₙ) * β_V_u
 Θ(x) = x > 0f0 ? 1f0 : 0f0
 
 function MQIF_simulation(;I = 5.)
-    V_state = V_0
+    V_state = V_0 - V_rest
     V_s_state = V_s0
     V_u_state = V_u0
 
@@ -56,12 +58,14 @@ function MQIF_simulation(;I = 5.)
         out = Θ(V_threshold)
 
         if iseven(t)
-            new_V_state = V_step(V_state, V_s_state, V_u_state, I) + out * (-V_step(V_state, V_s_state, V_u_state, I) + V_r)
+            unshifted_V = V_state + V_rest
+            new_V_state = V_step(unshifted_V, V_s_state, V_u_state, I) + out * (-V_step(unshifted_V, V_s_state, V_u_state, I) + V_r)
 
-            V_state = new_V_state
+            V_state = new_V_state - V_rest
         elseif isodd(t)
-            new_V_s_state = V_s_step(V_s_state, V_state) + out * (-V_s_step(V_s_state, V_state) + V_sr)
-            new_V_u_state = V_u_step(V_u_state, V_state) + out * (-V_u_step(V_u_state, V_state) + V_u_state + ΔV_u)
+            unshifted_V = V_state + V_rest
+            new_V_s_state = V_s_step(V_s_state, unshifted_V) + out * (-V_s_step(V_s_state, unshifted_V) + V_sr)
+            new_V_u_state = V_u_step(V_u_state, unshifted_V) + out * (-V_u_step(V_u_state, unshifted_V) + V_u_state + ΔV_u)
 
             V_s_state = new_V_s_state
             V_u_state = new_V_u_state
@@ -106,7 +110,7 @@ end
 MQIF_prob = ODEProblem(MQIF_system, [], (0.0, 200.0))
 MQIF_sol = solve(MQIF_prob, Tsit5(); abstol = 1e-6, reltol = 1e-6)
 
-records = MQIF_simulation(I = 5.)
+records = MQIF_simulation(I = 0.)
 
 mtk_Vplot = plot(MQIF_sol[MQIF_system.V], label = "V")
 mtk_V_s_plot = plot(MQIF_sol[MQIF_system.V_s], label = "V_s")

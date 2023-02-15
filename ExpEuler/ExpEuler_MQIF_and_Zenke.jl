@@ -9,7 +9,7 @@ step_number = 200
 input_number = 100;
 hidden_number = 4;
 output_number = 2;
-batch_size = 2^6 # batch size for training;
+batch_size = 2^7 # batch size for training;
 
 begin
     switch = 1
@@ -18,7 +18,7 @@ begin
     C = 1 * time_rescaling # ms
     τ_s = 10 * time_rescaling
     τ_u = 100
-    V_0 = -40 # unitless
+    V_0 = -41 # unitless
     V_s0 = [-41, -39, -38.5, -39, -38.5][switch]
     V_u0 = [-50, -50, -50, -54.5, -54.5][switch]
     g_f = 1
@@ -30,7 +30,7 @@ begin
     ΔV_u = 3
     I = 5
 
-    V_max = -39.
+    V_max = -40.
 
 	τ_syn = 5e-3 # s; synaptic time constant
 	τ_mem = 10e-3 # s; membrane time constant
@@ -122,7 +122,7 @@ end
 
 function MQIF_Zenke_simulation(X, W1, W2; surrogate = true)
     synapse_state = zeros((batch_size, hidden_number))
-    V_hidden_state = fill(V_0, (batch_size, hidden_number))
+    V_hidden_state = fill(-44., (batch_size, hidden_number))
     V_s_hidden_state = fill(V_s0, (batch_size, hidden_number))
 
     # Here we define two lists which we use to record the membrane potentials and output spikes
@@ -251,12 +251,12 @@ MQIF_surrogate_optprob = Optimization.OptimizationProblem(MQIF_surrogate_optf, v
 MQIF_no_surrogate_optf = Optimization.OptimizationFunction((x,p) -> MQIF_SNN_loss(x; surrogate = false), adtype)
 MQIF_no_surrogate_optprob = Optimization.OptimizationProblem(MQIF_no_surrogate_optf, vcat(MQIF_W1_init, transpose(MQIF_W2_init)))
 
-epochs = 100
+epochs = 200
 
 #surrogate_result = Optimization.solve(surrogate_optprob, Optimisers.Adam(2f-3, (9f-1, 9.99f-1)), callback  = callback_maker(surrogate = true), maxiters = epochs)
 #no_surrogate_result = Optimization.solve(no_surrogate_optprob, Optimisers.Adam(2f-3, (9f-1, 9.99f-1)), callback  = callback_maker(surrogate = false), maxiters = epochs)
-MQIF_surrogate_result = Optimization.solve(MQIF_surrogate_optprob, Optimisers.Adam(5f-3, (9f-1, 9.99f-1)), callback  = callback_maker(surrogate = true), maxiters = epochs)
-MQIF_no_surrogate_result = Optimization.solve(MQIF_no_surrogate_optprob, Optimisers.Adam(5f-3, (9f-1, 9.99f-1)), callback  = callback_maker(surrogate = false), maxiters = epochs)
+MQIF_surrogate_result = Optimization.solve(MQIF_surrogate_optprob, Optimisers.Adam(2f-3, (9f-1, 9.99f-1)), callback  = callback_maker(surrogate = true), maxiters = epochs)
+MQIF_no_surrogate_result = Optimization.solve(MQIF_no_surrogate_optprob, Optimisers.Adam(2f-3, (9f-1, 9.99f-1)), callback  = callback_maker(surrogate = false), maxiters = epochs)
 
 MQIF_loss_plot = plot(1:(epochs+1), MQIF_surrogate_loss_record, xlabel = "Epochs", ylabel = "Crossentropy loss"; color = :orange, lw=3, label = "Surrogate", ylims = (0., 0.9), yticks = 0:0.1:0.9)
 plot!(MQIF_loss_plot, 1:(epochs+1), MQIF_no_surrogate_loss_record, xlabel = "Epochs", ylabel = "Crossentropy loss"; color = :blue, lw=3, label = "No surrogate")
