@@ -30,7 +30,8 @@ begin
     ΔV_u = 3
     I = 5
 
-    V_max = -40.
+    V_rest = (V_0 + (g_s / g_f)*V_s0) / (1 + g_s / g_f) + 0.33
+    V_max = 1.
 
 	τ_syn = 5e-3 # s; synaptic time constant
 	τ_mem = 10e-3 # s; membrane time constant
@@ -140,13 +141,15 @@ function MQIF_Zenke_simulation(X, W1, W2; surrogate = true)
 
         if iseven(t)
             #new_V_hidden_state = @. V_step(V_hidden_state, V_s_hidden_state, V_u0, synapse_state) + out * (-V_step(V_hidden_state, V_s_hidden_state, V_u0, synapse_state) + V_r)
-            new_V_hidden_state = @. V_step(V_hidden_state, V_s_hidden_state, V_u0, synapse_state) * (1 - out) + out * V_r
+            unshifted_hidden_V = V_hidden_state .+ V_rest
+            new_V_hidden_state = @. V_step(unshifted_hidden_V, V_s_hidden_state, V_u0, synapse_state) * (1 - out) + out * V_r
             new_hidden_synapse_state = @. β_syn * synapse_state + h1[:, t, :]
 
-            V_hidden_state = new_V_hidden_state
+            V_hidden_state = new_V_hidden_state .- V_rest
             synapse_state = new_hidden_synapse_state
         elseif isodd(t)
-            new_V_s_hidden_state = @. V_s_step(V_s_hidden_state, V_hidden_state) * (1 - out) + out * V_sr
+            unshifted_hidden_V = V_hidden_state .+ V_rest
+            new_V_s_hidden_state = @. V_s_step(V_s_hidden_state, unshifted_hidden_V) * (1 - out) + out * V_sr
 
             V_s_hidden_state = new_V_s_hidden_state
         end

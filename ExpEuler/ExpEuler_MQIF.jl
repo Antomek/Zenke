@@ -23,9 +23,8 @@ begin
     ΔV_u = 3
     I = 5
 
-
-    V_rest = (V_0 + V_s0 * (g_s / g_f)) / (1 + g_s / g_f)
-    V_max = -30. - V_rest
+    V_rest = (V_0 + (g_s / g_f)*V_s0) / (1 + g_s / g_f) + 0.33
+    V_max = -30.
 end
 
 β(τ) = exp( -Δt / τ)
@@ -45,7 +44,7 @@ V_u_step(V_uₙ, Vₙ) = Vₙ + (V_uₙ - Vₙ) * β_V_u
 Θ(x) = x > 0f0 ? 1f0 : 0f0
 
 function MQIF_simulation(;I = 5.)
-    V_state = V_0 - V_rest
+    V_state = V_rest - V_rest
     V_s_state = V_s0
     V_u_state = V_u0
 
