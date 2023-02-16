@@ -50,6 +50,15 @@ begin
 	β_out = β(τ_out)
 end
 
+function plot_nullclines()
+    V̇(V, V_s) = (g_f * (V - V_0)^2 + g_s * (V_s - V_s0)^2) / C
+    V̇_s(V, V_s) = (V  - V_s) / τ_s
+    range = (-50:0.1:50) .- 40
+    contour(range, range, V̇, levels = [0.])
+    contour!(range, range, V̇_s, levels = [0.])
+end
+plot_nullclines()
+
 V_∞(Vₙ, V_sₙ, V_uₙ, I) = (g_f * (Vₙ^2 + V_0^2) - g_s * (V_sₙ - V_s0)^2 - g_u * (V_uₙ - V_u0)^2 + I) / (2*g_f*V_0)
 
 V_step(Vₙ, V_sₙ, V_uₙ, I) = V_∞(Vₙ, V_sₙ, V_uₙ, I) + (Vₙ - V_∞(Vₙ, V_sₙ, V_uₙ, I)) * β_V
@@ -205,64 +214,64 @@ function plot_voltages(membrane_record; spikes = nothing, spike_height = -37., d
 end
 
 hidden_layer_plots = plot_voltages(membrane_record; spikes = spike_record, dim = (2,2))
-output_layer_plots = plot_voltages(output_record)
-
-function MQIF_classification_accuracy(X, Y, weights; surrogate = true)
-    W1 = weights[1:100, :]
-    W2 = transpose(weights[101:end, :])
-
-    output = MQIF_Zenke_simulation(X, W1, W2; surrogate = surrogate)[3]
-    time_max = maximum(output, dims = 2) # Maximum over time
-    y_network = dropdims(time_max; dims = 2)
-    unit_max = getindex.(Tuple.(argmax(y_network; dims = 2)), 2)
-	accuracy = mean(unit_max .== Y)
-    return accuracy
-end
-
-function MQIF_SNN_loss(weights; surrogate = true)
-    W1 = weights[1:100, :]
-    W2 = transpose(weights[101:end, :])
-
-	output = MQIF_Zenke_simulation(X_data, W1, W2; surrogate = surrogate)[3]
-	time_max = maximum(output, dims = 2)
-    y_network = transpose(dropdims(time_max; dims = 2))
-    y_label = onehotbatch(Y_data, 1:2)
-	return logitcrossentropy(y_network, y_label)
-end
-MQIF_no_surrogate_loss(weights) = MQIF_SNN_loss(weights; surrogate = false)
-
-MQIF_surrogate_loss_record = Float32[]
-MQIF_surrogate_weights = Matrix{Float32}[]
-MQIF_no_surrogate_loss_record = Float32[]
-MQIF_no_surrogate_weights = Matrix{Float32}[]
-
-callback_maker = function(;surrogate = true)
-    return callback = function (p, l)
-    display(l)
-    surrogate ? push!(MQIF_surrogate_loss_record, l) : push!(MQIF_no_surrogate_loss_record, l)
-    surrogate ? push!(MQIF_surrogate_weights, p) : push!(MQIF_no_surrogate_weights, p)
-    # Tell Optimization.solve to not halt the optimization. If return true, then
-    # optimization stops.
-    return false
-    end
-end
-
-adtype = Optimization.AutoZygote()
-MQIF_surrogate_optf = Optimization.OptimizationFunction((x,p) -> MQIF_SNN_loss(x; surrogate = true), adtype)
-MQIF_surrogate_optprob = Optimization.OptimizationProblem(MQIF_surrogate_optf, vcat(MQIF_W1_init, transpose(MQIF_W2_init)))
-
-MQIF_no_surrogate_optf = Optimization.OptimizationFunction((x,p) -> MQIF_SNN_loss(x; surrogate = false), adtype)
-MQIF_no_surrogate_optprob = Optimization.OptimizationProblem(MQIF_no_surrogate_optf, vcat(MQIF_W1_init, transpose(MQIF_W2_init)))
-
-epochs = 200
-
-#surrogate_result = Optimization.solve(surrogate_optprob, Optimisers.Adam(2f-3, (9f-1, 9.99f-1)), callback  = callback_maker(surrogate = true), maxiters = epochs)
-#no_surrogate_result = Optimization.solve(no_surrogate_optprob, Optimisers.Adam(2f-3, (9f-1, 9.99f-1)), callback  = callback_maker(surrogate = false), maxiters = epochs)
-MQIF_surrogate_result = Optimization.solve(MQIF_surrogate_optprob, Optimisers.Adam(2f-3, (9f-1, 9.99f-1)), callback  = callback_maker(surrogate = true), maxiters = epochs)
-MQIF_no_surrogate_result = Optimization.solve(MQIF_no_surrogate_optprob, Optimisers.Adam(2f-3, (9f-1, 9.99f-1)), callback  = callback_maker(surrogate = false), maxiters = epochs)
-
-MQIF_loss_plot = plot(1:(epochs+1), MQIF_surrogate_loss_record, xlabel = "Epochs", ylabel = "Crossentropy loss"; color = :orange, lw=3, label = "Surrogate", ylims = (0., 0.9), yticks = 0:0.1:0.9)
-plot!(MQIF_loss_plot, 1:(epochs+1), MQIF_no_surrogate_loss_record, xlabel = "Epochs", ylabel = "Crossentropy loss"; color = :blue, lw=3, label = "No surrogate")
-
-@info "Surrogate accuracy: " MQIF_classification_accuracy(X_data, Y_data, MQIF_surrogate_weights[end])
-@info "No surrogate accuracy: " MQIF_classification_accuracy(X_data, Y_data, MQIF_no_surrogate_weights[end]; surrogate = false)
+#output_layer_plots = plot_voltages(output_record)
+#
+#function MQIF_classification_accuracy(X, Y, weights; surrogate = true)
+#    W1 = weights[1:100, :]
+#    W2 = transpose(weights[101:end, :])
+#
+#    output = MQIF_Zenke_simulation(X, W1, W2; surrogate = surrogate)[3]
+#    time_max = maximum(output, dims = 2) # Maximum over time
+#    y_network = dropdims(time_max; dims = 2)
+#    unit_max = getindex.(Tuple.(argmax(y_network; dims = 2)), 2)
+#	accuracy = mean(unit_max .== Y)
+#    return accuracy
+#end
+#
+#function MQIF_SNN_loss(weights; surrogate = true)
+#    W1 = weights[1:100, :]
+#    W2 = transpose(weights[101:end, :])
+#
+#	output = MQIF_Zenke_simulation(X_data, W1, W2; surrogate = surrogate)[3]
+#	time_max = maximum(output, dims = 2)
+#    y_network = transpose(dropdims(time_max; dims = 2))
+#    y_label = onehotbatch(Y_data, 1:2)
+#	return logitcrossentropy(y_network, y_label)
+#end
+#MQIF_no_surrogate_loss(weights) = MQIF_SNN_loss(weights; surrogate = false)
+#
+#MQIF_surrogate_loss_record = Float32[]
+#MQIF_surrogate_weights = Matrix{Float32}[]
+#MQIF_no_surrogate_loss_record = Float32[]
+#MQIF_no_surrogate_weights = Matrix{Float32}[]
+#
+#callback_maker = function(;surrogate = true)
+#    return callback = function (p, l)
+#    display(l)
+#    surrogate ? push!(MQIF_surrogate_loss_record, l) : push!(MQIF_no_surrogate_loss_record, l)
+#    surrogate ? push!(MQIF_surrogate_weights, p) : push!(MQIF_no_surrogate_weights, p)
+#    # Tell Optimization.solve to not halt the optimization. If return true, then
+#    # optimization stops.
+#    return false
+#    end
+#end
+#
+#adtype = Optimization.AutoZygote()
+#MQIF_surrogate_optf = Optimization.OptimizationFunction((x,p) -> MQIF_SNN_loss(x; surrogate = true), adtype)
+#MQIF_surrogate_optprob = Optimization.OptimizationProblem(MQIF_surrogate_optf, vcat(MQIF_W1_init, transpose(MQIF_W2_init)))
+#
+#MQIF_no_surrogate_optf = Optimization.OptimizationFunction((x,p) -> MQIF_SNN_loss(x; surrogate = false), adtype)
+#MQIF_no_surrogate_optprob = Optimization.OptimizationProblem(MQIF_no_surrogate_optf, vcat(MQIF_W1_init, transpose(MQIF_W2_init)))
+#
+#epochs = 200
+#
+##surrogate_result = Optimization.solve(surrogate_optprob, Optimisers.Adam(2f-3, (9f-1, 9.99f-1)), callback  = callback_maker(surrogate = true), maxiters = epochs)
+##no_surrogate_result = Optimization.solve(no_surrogate_optprob, Optimisers.Adam(2f-3, (9f-1, 9.99f-1)), callback  = callback_maker(surrogate = false), maxiters = epochs)
+#MQIF_surrogate_result = Optimization.solve(MQIF_surrogate_optprob, Optimisers.Adam(2f-3, (9f-1, 9.99f-1)), callback  = callback_maker(surrogate = true), maxiters = epochs)
+#MQIF_no_surrogate_result = Optimization.solve(MQIF_no_surrogate_optprob, Optimisers.Adam(2f-3, (9f-1, 9.99f-1)), callback  = callback_maker(surrogate = false), maxiters = epochs)
+#
+#MQIF_loss_plot = plot(1:(epochs+1), MQIF_surrogate_loss_record, xlabel = "Epochs", ylabel = "Crossentropy loss"; color = :orange, lw=3, label = "Surrogate", ylims = (0., 0.9), yticks = 0:0.1:0.9)
+#plot!(MQIF_loss_plot, 1:(epochs+1), MQIF_no_surrogate_loss_record, xlabel = "Epochs", ylabel = "Crossentropy loss"; color = :blue, lw=3, label = "No surrogate")
+#
+#@info "Surrogate accuracy: " MQIF_classification_accuracy(X_data, Y_data, MQIF_surrogate_weights[end])
+#@info "No surrogate accuracy: " MQIF_classification_accuracy(X_data, Y_data, MQIF_no_surrogate_weights[end]; surrogate = false)
