@@ -51,11 +51,12 @@ begin
 end
 
 function plot_nullclines()
-    V̇(V, V_s) = (g_f * (V - V_0)^2 + g_s * (V_s - V_s0)^2) / C
+    V̇(V, V_s) = (g_f * (V - V_0)^2 - g_s * (V_s - V_s0)^2) / C
     V̇_s(V, V_s) = (V  - V_s) / τ_s
     range = (-50:0.1:50) .- 40
-    contour(range, range, V̇, levels = [0.])
-    contour!(range, range, V̇_s, levels = [0.])
+    p = contour(range, range, V̇, levels = [0.]; color = :green, lw = 3)
+    contour!(p, range, range, V̇_s, levels = [0.]; color = :orange, lw = 3)
+    p
 end
 plot_nullclines()
 
