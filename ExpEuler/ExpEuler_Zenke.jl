@@ -161,61 +161,108 @@ function plot_voltages(membrane_record; spikes = nothing, spike_height = 2., dim
 end
 
 hidden_layer_plots = plot_voltages(membrane_record; spikes = spike_record, dim = (2,2))
-#output_layer_plots = plot_voltages(output_record)
-#
-#function LIF_classification_accuracy(X, Y, weights; surrogate = true)
-#    W1 = weights[1:100, :]
-#    W2 = transpose(weights[101:end, :])
-#
-#    output = LIF_Zenke_simulation(X, W1, W2; surrogate = surrogate)[3]
-#    time_max = maximum(output, dims = 2) # Maximum over time
-#    y_network = dropdims(time_max; dims = 2)
-#    unit_max = getindex.(Tuple.(argmax(y_network; dims = 2)), 2)
-#	accuracy = mean(unit_max .== Y)
-#    return accuracy
-#end
-#
-#function LIF_SNN_loss(weights; surrogate = true)
-#    W1 = weights[1:100, :]
-#    W2 = transpose(weights[101:end, :])
-#
-#	output = LIF_Zenke_simulation(X_data, W1, W2; surrogate = surrogate)[3]
-#	time_max = maximum(output, dims = 2)
-#    y_network = transpose(dropdims(time_max; dims = 2))
-#    y_label = onehotbatch(Y_data, 1:2)
-#	return logitcrossentropy(y_network, y_label)
-#end
-#
-#LIF_surrogate_loss_record = Float32[]
-#LIF_surrogate_weights = Matrix{Float32}[]
-#LIF_no_surrogate_loss_record = Float32[]
-#LIF_no_surrogate_weights = Matrix{Float32}[]
-#
-#callback_maker = function(;surrogate = true)
-#    return callback = function (p, l)
-#    display(l)
-#    surrogate ? push!(LIF_surrogate_loss_record, l) : push!(LIF_no_surrogate_loss_record, l)
-#    surrogate ? push!(LIF_surrogate_weights, p) : push!(LIF_no_surrogate_weights, p)
-#    # Tell Optimization.solve to not halt the optimization. If return true, then
-#    # optimization stops.
-#    return false
-#    end
-#end
-#
-#adtype = Optimization.AutoZygote()
-#LIF_surrogate_optf = Optimization.OptimizationFunction((x,p) -> LIF_SNN_loss(x; surrogate = true), adtype)
-#LIF_surrogate_optprob = Optimization.OptimizationProblem(LIF_surrogate_optf, vcat(LIF_W1_init, transpose(LIF_W2_init)))
-#
-#LIF_no_surrogate_optf = Optimization.OptimizationFunction((x,p) -> LIF_SNN_loss(x; surrogate = false), adtype)
-#LIF_no_surrogate_optprob = Optimization.OptimizationProblem(LIF_no_surrogate_optf, vcat(LIF_W1_init, transpose(LIF_W2_init)))
-#
-#epochs = 1000
-#
-#surrogate_result = Optimization.solve(LIF_surrogate_optprob, Optimisers.Adam(2f-3, (9f-1, 9.99f-1)), callback  = callback_maker(surrogate = true), maxiters = epochs)
-#no_surrogate_result = Optimization.solve(LIF_no_surrogate_optprob, Optimisers.Adam(2f-3, (9f-1, 9.99f-1)), callback  = callback_maker(surrogate = false), maxiters = epochs)
-#
-#loss_plot = plot(1:(epochs+1), LIF_surrogate_loss_record, xlabel = "Epochs", ylabel = "Crossentropy loss"; color = :orange, lw=3, label = "Surrogate", ylims = (0., 0.9), yticks = 0:0.1:0.9)
-#plot!(loss_plot, 1:(epochs+1), LIF_no_surrogate_loss_record, xlabel = "Epochs", ylabel = "Crossentropy loss"; color = :blue, lw=3, label = "No surrogate")
-#
-#@info "Surrogate accuracy: " LIF_classification_accuracy(X_data, Y_data, LIF_surrogate_weights[end])
-#@info "No surrogate accuracy: " LIF_classification_accuracy(X_data, Y_data, LIF_no_surrogate_weights[end]; surrogate = false)
+output_layer_plots = plot_voltages(output_record)
+
+function LIF_classification_accuracy(X, Y, weights; surrogate = true)
+    W1 = weights[1:100, :]
+    W2 = transpose(weights[101:end, :])
+
+    output = LIF_Zenke_simulation(X, W1, W2; surrogate = surrogate)[3]
+    time_max = maximum(output, dims = 2) # Maximum over time
+    y_network = dropdims(time_max; dims = 2)
+    unit_max = getindex.(Tuple.(argmax(y_network; dims = 2)), 2)
+	accuracy = mean(unit_max .== Y)
+    return accuracy
+end
+
+function LIF_SNN_loss(weights; surrogate = true)
+    W1 = weights[1:100, :]
+    W2 = transpose(weights[101:end, :])
+
+	output = LIF_Zenke_simulation(X_data, W1, W2; surrogate = surrogate)[3]
+	time_max = maximum(output, dims = 2)
+    y_network = transpose(dropdims(time_max; dims = 2))
+    y_label = onehotbatch(Y_data, 1:2)
+	return logitcrossentropy(y_network, y_label)
+end
+
+LIF_surrogate_loss_record = Float32[]
+LIF_surrogate_weights = Matrix{Float32}[]
+LIF_no_surrogate_loss_record = Float32[]
+LIF_no_surrogate_weights = Matrix{Float32}[]
+
+callback_maker = function(;surrogate = true)
+    return callback = function (p, l)
+    display(l)
+    surrogate ? push!(LIF_surrogate_loss_record, l) : push!(LIF_no_surrogate_loss_record, l)
+    surrogate ? push!(LIF_surrogate_weights, p) : push!(LIF_no_surrogate_weights, p)
+    # Tell Optimization.solve to not halt the optimization. If return true, then
+    # optimization stops.
+    return false
+    end
+end
+
+adtype = Optimization.AutoZygote()
+LIF_surrogate_optf = Optimization.OptimizationFunction((x,p) -> LIF_SNN_loss(x; surrogate = true), adtype)
+LIF_surrogate_optprob = Optimization.OptimizationProblem(LIF_surrogate_optf, vcat(LIF_W1_init, transpose(LIF_W2_init)))
+
+LIF_no_surrogate_optf = Optimization.OptimizationFunction((x,p) -> LIF_SNN_loss(x; surrogate = false), adtype)
+LIF_no_surrogate_optprob = Optimization.OptimizationProblem(LIF_no_surrogate_optf, vcat(LIF_W1_init, transpose(LIF_W2_init)))
+
+epochs = 1000
+
+surrogate_result = Optimization.solve(LIF_surrogate_optprob, Optimisers.Adam(2f-3, (9f-1, 9.99f-1)), callback  = callback_maker(surrogate = true), maxiters = epochs)
+no_surrogate_result = Optimization.solve(LIF_no_surrogate_optprob, Optimisers.Adam(2f-3, (9f-1, 9.99f-1)), callback  = callback_maker(surrogate = false), maxiters = epochs)
+
+loss_plot = plot(1:(epochs+1), LIF_surrogate_loss_record, xlabel = "Epochs", ylabel = "Crossentropy loss"; color = :orange, lw=3, label = "Surrogate", ylims = (0., 0.9), yticks = 0:0.1:0.9)
+plot!(loss_plot, 1:(epochs+1), LIF_no_surrogate_loss_record, xlabel = "Epochs", ylabel = "Crossentropy loss"; color = :blue, lw=3, label = "No surrogate")
+
+@info "Surrogate accuracy: " LIF_classification_accuracy(X_data, Y_data, LIF_surrogate_weights[end])
+@info "No surrogate accuracy: " LIF_classification_accuracy(X_data, Y_data, LIF_no_surrogate_weights[end]; surrogate = false)
+
+using CairoMakie, LaTeXStrings
+
+SuperSpike(x, β = 100f0) = 1f0 / (β * abs(x)^2 + 1)
+
+surrogate_gradient_plot = let
+    fig = Figure(resolution = (1000, 600), fontsize = 20)
+
+    colors = Makie.wong_colors()
+
+    ax = Axis(fig[2,1:8], xlabel = "Epoch", ylabel = "Crossentropy loss")
+
+    lines!(ax, 1:(epochs+1), LIF_surrogate_loss_record; color = colors[1], label = "Surrogate gradient \n training", linewidth = 3)
+    lines!(ax, 1:(epochs+1), LIF_no_surrogate_loss_record; color = colors[2], label = "Actual gradient \n training", linewidth = 3)
+
+    ax.yticks = 0:0.1:0.9
+    ax.xticks = 0:100:epochs
+
+    hidedecorations!(ax, ticks = false, ticklabels = false, label = false)
+    hidespines!(ax, :r, :t)
+
+    Legend(fig[2, 9:10], ax, framevisible = false)
+
+    xs = -1:0.001:1
+
+    activation_ax = Axis(fig[1,1:5], xlabel = "x")
+
+    step_vals = [Θ_spike(x) for x in xs]
+    surrogate_forward_vals = [SuperSpike(x) for x in xs]
+
+    lines!(activation_ax, xs, step_vals; color = colors[1], label = L"H(x)", linewidth = 3)
+    lines!(activation_ax, xs, surrogate_forward_vals; color = colors[2], label = L"\text{SuperSpike}(x)", linewidth = 3)
+
+    grad_ax = Axis(fig[1,6:10], xlabel = "x")
+
+    surrogate_grad_vals = [dSuperSpike(x) for x in xs]
+
+    lines!(grad_ax, xs, surrogate_grad_vals; color = colors[2], label = L"\frac{d \, \text{SuperSpike}}{d x}", linewidth = 3)
+    vlines!([0.]; color = :gray, linestyle = :dot, label = L"\frac{d H}{d x}", linewidth = 3)
+
+    hidedecorations!.([grad_ax, activation_ax], ticks = false, ticklabels = false, label = false)
+    hidespines!.([grad_ax, activation_ax], :r, :t)
+
+    axislegend.([activation_ax, grad_ax], position = :rt, framevisible = false)
+
+    fig
+end
